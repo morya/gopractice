@@ -17,6 +17,7 @@ var (
 )
 
 func main() {
+	flag.Parse()
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	var app = NewApp(*flagRedisAddr, *flagRedisKey)

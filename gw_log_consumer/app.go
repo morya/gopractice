@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"regexp"
@@ -12,6 +13,7 @@ import (
 	"golang.org/x/net/context"
 )
 
+type JsonValue map[string]interface{}
 type ChanEvent chan *Counter
 
 type App struct {
@@ -31,7 +33,7 @@ func NewApp(redisaddr, rediskey string) *App {
 		DB:   0,
 	})
 
-	ctx, cancel := context.WithCancel(nil)
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &App{
 		chanEvent: make(ChanEvent, 10),
@@ -56,19 +58,26 @@ func (a *App) isExiting() bool {
 func (a *App) Run() {
 	go a.reporter()
 
+	defer func() {
+		log.Info("main proc exiting")
+		a.cancel()
+	}()
+
 	for {
 		if a.isExiting() {
+			log.Info("finish")
 			return
 		}
 
 		msg, err := a.pollEvent()
 		if err != nil {
-			a.cancel()
-			return
+			log.Info("nothing to process")
+			continue
 		}
+
+		log.Infof("got event %v", msg)
 		err = a.procEvent(msg)
 		if err != nil {
-			a.cancel()
 			return
 		}
 	}
@@ -82,17 +91,6 @@ func (a *App) init(unixaddress string, reg string) bool {
 	if !a.buildRegexp(reg) {
 		return false
 	}
-	return true
-}
-
-func (a *App) buildConn(address string) bool {
-	c, err := net.Dial("unix", address)
-	if err != nil {
-		log.InfoErrorf(err, "dial unix socket failed")
-		return false
-	}
-
-	a.sock = c
 	return true
 }
 
@@ -113,8 +111,7 @@ func (a *App) pollEvent() (string, error) {
 	return value[1], nil
 }
 
-// send decoded data to inside channel
-func (a *App) procEvent(msg string) error {
+func (a *App) procMsgLine(msg string) error {
 	/* matches 结果
 	* 0: 全部匹配值
 	* 1: first group
@@ -128,6 +125,21 @@ func (a *App) procEvent(msg string) error {
 
 		a.chanEvent <- c
 	}
+	return nil
+}
+
+// send decoded data to inside channel
+func (a *App) procEvent(evt string) error {
+	var fbevt = make(JsonValue)
+	err := json.Unmarshal([]byte(evt), &fbevt)
+	if err != nil {
+		log.InfoError(err, "decode original filebeat event failed")
+		return err
+	}
+
+	msg := fmt.Sprintf("%v", fbevt["message"])
+	log.Infof("msg = %v", msg)
+	a.procMsgLine(msg)
 	return nil
 }
 

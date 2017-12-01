@@ -20,7 +20,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	var app = NewApp(*flagRedisAddr, *flagRedisKey)
-	if !app.init(*flagUnixSockAddr, `ELK_DATA (.*) ELD_END`) {
+	if !app.init(*flagUnixSockAddr, `ELK_DATA (.*) ELK_END`) {
 		return
 	}
 
